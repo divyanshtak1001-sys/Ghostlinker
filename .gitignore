@@ -1,0 +1,41 @@
+# Machine-specific Android SDK location — never commit this.
+local.properties
+
+# Build output
+.gradle/
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+*.hprof
+
+# OS
+Thumbs.db
+.DS_Store
+# Release signing secrets — never commit
+keystore.properties
+*.jks
+*.keystore
+
+# Build logs and artifacts
+*.log
+*.apk
+*.aab
+*.dex
+
+# Local tooling caches
+.kotlin/
+.agent-cache/
+
+# Node
+node_modules/
+web/node_modules/
+
+# Local dev TLS material (mkcert) — never commit
+localhost+*.pem
+*.key.pem

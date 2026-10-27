@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- GhostLink is an offline P2P application; disable all cleartext network traffic -->
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

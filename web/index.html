@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GhostLink — Private. Anonymous. Free.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/libsodium.js"></script>
+  <script src="js/libsodium-wrappers.js"></script>
+  <script src="js/jsQR.js"></script>
+  <script src="js/invitation.js"></script>
+  <script src="js/crypto.js"></script>
+  <script src="js/transport.js"></script>
+  <script>
+    window.GhostBootError = null;
+    window.addEventListener('error', function (e) {
+      if (!window.GhostBootError) {
+        window.GhostBootError = (e && e.message) ? e.message : 'Script failed to load';
+        var note = document.getElementById('boot-error-note');
+        if (note) { note.textContent = 'GhostLink failed to start: ' + window.GhostBootError; note.style.display = 'block'; }
+      }
+    }, true);
+    window.addEventListener('DOMContentLoaded', function () {
+      var missing = [];
+      if (typeof window.GhostInvitation === 'undefined') missing.push('invitation');
+      if (typeof window.GhostCrypto === 'undefined') missing.push('crypto');
+      if (typeof window.GhostTransport === 'undefined') missing.push('transport');
+      if (typeof window.jsQR === 'undefined') missing.push('QR decoder');
+      if (missing.length === 0) return;
+      var note = document.getElementById('boot-error-note');
+      if (note) {
+        note.textContent = 'GhostLink could not load: ' + missing.join(', ') +
+          '. This browser did not execute the app scripts' +
+          (window.GhostBootError ? ' (' + window.GhostBootError + ')' : '') +
+          '. Code entry and camera scanning are unavailable here; try another browser.';
+        note.style.display = 'block';
+      }
+    }, { once: true });
+  </script>
+</head>
+<body class="theme-green">
+  <!-- Top Navigation & Screen Selector -->
+  <header class="preview-toolbar">
+    <div class="toolbar-brand">
+      <span class="toolbar-dot"></span>
+      <span class="toolbar-title">GHOSTLINK SECURE P2P</span>
+    </div>
+
+    <div class="toolbar-controls">
+      <div class="toolbar-group">
+        <label for="screen-jumper">SELECT SCREEN:</label>
+        <select id="screen-jumper">
+          <option value="splash">1. Splash Screen</option>
+          <option value="home" selected>2. Home Screen</option>
+          <option value="pairing-menu">3. Pairing Menu</option>
+          <option value="show-invitation">4. Show My Invitation (5m Single-Use)</option>
+          <option value="scan-qr">5. Scan QR Code (Live Camera)</option>
+          <option value="enter-code">6. Enter Invitation Code</option>
+          <option value="invitation-confirmed">7. Invitation Confirmed</option>
+          <option value="nearby-devices">8. Nearby Devices (Real mDNS / WSS)</option>
+          <option value="connection-request">9. Connection Request</option>
+          <option value="connected">10. Connected!</option>
+          <option value="chat-green">11. Chat (Terminal Green - Libsodium)</option>
+          <option value="chat-blue">12. Chat (Midnight Blue - Libsodium)</option>
+          <option value="safety-number">13. Safety Number Verification</option>
+          <option value="settings">14. Settings (Hub)</option>
+          <option value="settings-connection">15. Settings: Connection Preferences</option>
+          <option value="settings-privacy">16. Settings: Privacy & Security</option>
+          <option value="settings-about">17. Settings: About GhostLink</option>
+          <option value="permission">18. Permission Request</option>
+          <option value="exit">19. Exit / Disconnect</option>
+        </select>
+      </div>
+
+      <button id="toggle-frame-btn" class="toolbar-btn">
+        TOGGLE FRAME
+      </button>
+    </div>
+  </header>
+
+  <!-- Viewport -->
+  <main class="viewport-container">
+    <div class="device-frame" id="device-frame">
+      <!-- iOS / Android Status Bar (9:41) -->
+      <div class="device-status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-indicators">
+          <svg width="15" height="11" viewBox="0 0 17 11" fill="currentColor">
+            <path d="M1 9h2V11H1V9zm4-3h2v5H5V6zm4-3h2v8H9V3zm4-3h2v11h-2V0z"/>
+          </svg>
+          <svg width="14" height="11" viewBox="0 0 16 11" fill="currentColor">
+            <path d="M8 2.5C5.2 2.5 2.7 3.6.8 5.4L0 4.5C2.2 2.4 5 1 8 1s5.8 1.4 8 3.5l-.8.9C13.3 3.6 10.8 2.5 8 2.5zM8 5.5c-1.8 0-3.4.7-4.7 1.9l-.8-.8C4 5.2 5.9 4.3 8 4.3s4 .9 5.5 2.3l-.8.8C11.4 6.2 9.8 5.5 8 5.5zm0 3c-.9 0-1.8.4-2.4 1l-.8-.8C5.6 7.9 6.7 7.3 8 7.3s2.4.6 3.2 1.4l-.8.8C9.8 8.9 8.9 8.5 8 8.5z"/>
+          </svg>
+          <svg width="22" height="11" viewBox="0 0 25 12" fill="currentColor">
+            <rect x="1" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="3" y="3" width="14" height="6" rx="1.5"/>
+            <path d="M23 4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- App Screen Canvas Container -->
+      <div class="app-screen-container" id="app-container">
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 1: SPLASH SCREEN                                      -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-splash">
+          <div class="splash-container">
+            <div class="splash-ghost-glow-wrap">
+              <svg class="splash-ghost-icon" viewBox="0 0 108 108" fill="currentColor">
+                <!-- Hooded Silhouette with glowing green eyes -->
+                <path d="M54 10 C32 10, 20 28, 20 52 C20 76, 12 90, 10 96 C16 98, 24 94, 30 92 C38 90, 46 94, 54 94 C62 94, 70 90, 78 92 C84 94, 92 98, 98 96 C96 90, 88 76, 88 52 C88 28, 76 10, 54 10 Z" fill="#030805" stroke="#00E676" stroke-width="2.5"/>
+                <circle cx="43" cy="50" r="4" fill="#00E676"/>
+                <circle cx="65" cy="50" r="4" fill="#00E676"/>
+              </svg>
+            </div>
+
+            <h1 class="splash-app-title"><span style="color: #ffffff;">Ghost</span><span style="color: #00E676;">Link</span></h1>
+            <p class="splash-sub-claims">Private. Anonymous. Free.</p>
+
+            <div class="splash-feature-list">
+              <div>No accounts.</div>
+              <div>No tracking.</div>
+              <div>Just people.</div>
+            </div>
+
+            <div class="splash-loading-text" id="splash-enter-btn" style="cursor: pointer;">
+              Initializing secure environment...
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 2: HOME SCREEN (WITH BOTTOM NAV)                      -->
+        <!-- ============================================================ -->
+        <section class="screen active" id="screen-home">
+          <!-- Top Header -->
+          <div class="home-brand-header">
+            <button class="home-menu-icon" aria-label="Menu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="15" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
+            <div class="home-title-wrap">
+              <div class="home-app-title">GhostLink</div>
+              <div class="home-tagline">Connect · Chat · Stay Private</div>
+            </div>
+            <button class="home-menu-icon" id="home-to-settings-btn" aria-label="Settings">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="screen-scrollable">
+            <!-- 1. Your Alias Card -->
+            <div class="alias-banner-card">
+              <div class="alias-avatar-box">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                </svg>
+              </div>
+              <div class="alias-details">
+                <div class="alias-label-sm">Your Alias</div>
+                <div class="alias-name-row">
+                  <span id="home-alias-text">Shadow7F3</span>
+                </div>
+                <div class="alias-status-online">
+                  <span class="status-dot-green"></span>
+                  <span>Online</span>
+                </div>
+              </div>
+              <button class="alias-refresh-btn" id="home-alias-refresh" title="Randomize Alias">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+              </button>
+            </div>
+
+            <!-- 2. Pair with Someone Tile -->
+            <div class="ghost-card" id="home-to-pairing-btn">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Pair with Someone</div>
+                <div class="card-subtitle">Scan, enter code or share link</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <!-- 3. Your Invitations Tile -->
+            <div class="ghost-card" id="home-to-invitations-btn">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Your Invitations</div>
+                <div class="card-subtitle">View and manage your codes</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <!-- 4. Nearby Devices Tile -->
+            <div class="ghost-card" id="home-to-nearby-btn">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <circle cx="12" cy="12" r="6"></circle>
+                  <circle cx="12" cy="12" r="2"></circle>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Nearby Devices</div>
+                <div class="card-subtitle">Discover GhostLink devices</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <!-- 5. Settings Tile -->
+            <div class="ghost-card" id="home-to-settings-btn-2">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Settings</div>
+                <div class="card-subtitle">Privacy, security and more</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+          </div>
+
+          <!-- Bottom Navigation Bar -->
+          <div class="bottom-nav-bar">
+            <button class="nav-item active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              </svg>
+              <span>Home</span>
+            </button>
+            <button class="nav-item" id="nav-to-chat-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <span>Chats</span>
+            </button>
+            <button class="nav-item" id="nav-to-devices-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                <line x1="6" y1="18" x2="6.01" y2="18"></line>
+              </svg>
+              <span>Devices</span>
+            </button>
+            <button class="nav-item" id="nav-to-profile-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <span>Profile</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 3: PAIRING MENU                                       -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-pairing-menu">
+          <div class="screen-top-header">
+            <button class="back-btn" id="pairing-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Pair with Someone</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable">
+            <p style="color: var(--text-muted); font-size: 13px;">Choose how you want to connect.</p>
+
+            <div class="ghost-card" id="pairing-to-scan-btn">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Scan QR Code</div>
+                <div class="card-subtitle">Scan another person's QR code.</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <div class="ghost-card" id="pairing-to-code-btn">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                  <line x1="6" y1="8" x2="6.01" y2="8"></line>
+                  <line x1="10" y1="8" x2="10.01" y2="8"></line>
+                  <line x1="14" y1="8" x2="14.01" y2="8"></line>
+                  <line x1="18" y1="8" x2="18.01" y2="8"></line>
+                  <line x1="6" y1="12" x2="6.01" y2="12"></line>
+                  <line x1="10" y1="12" x2="10.01" y2="12"></line>
+                  <line x1="14" y1="12" x2="14.01" y2="12"></line>
+                  <line x1="18" y1="12" x2="18.01" y2="12"></line>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Enter Invitation Code</div>
+                <div class="card-subtitle">Type the code someone shared.</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <div class="ghost-card" id="pairing-to-link-btn">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Open Invitation Link</div>
+                <div class="card-subtitle">Open a GhostLink link.</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <div class="ghost-card" id="pairing-to-myinv-btn">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="18" cy="5" r="3"></circle>
+                  <circle cx="6" cy="12" r="3"></circle>
+                  <circle cx="18" cy="19" r="3"></circle>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Show / Send My Invitation</div>
+                <div class="card-subtitle">Generate your QR, code or link.</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 4: SHOW MY INVITATION                                 -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-show-invitation">
+          <div class="screen-top-header">
+            <button class="back-btn" id="myinv-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Your Invitation</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable">
+            <p style="color: var(--text-muted); font-size: 12px; text-align: center;">
+              Share your QR code, code or link with the person you want to connect with.
+            </p>
+
+            <div class="qr-frame-box">
+              <div class="qr-corner-bracket tl"></div>
+              <div class="qr-corner-bracket tr"></div>
+              <div class="qr-corner-bracket bl"></div>
+              <div class="qr-corner-bracket br"></div>
+              <!-- Generated SVG QR Code -->
+              <div id="my-invitation-qr-svg" style="width: 160px; height: 160px;"></div>
+            </div>
+
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Invitation Code</div>
+            <div class="invitation-code-pill-card">
+              <span class="inv-code-str" id="inv-code-text">Waiting for invitation…</span>
+              <button class="icon-btn" id="copy-code-btn" title="Copy Code">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
+            </div>
+
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Share Link</div>
+            <div class="share-link-box">
+              <span id="inv-share-link-text">Waiting for server…</span>
+              <button class="icon-btn" id="copy-link-btn" title="Copy Link">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
+            </div>
+            <div style="font-size: 11px; color: #FF9800; margin-top: 5px;">Less private: the recipient must obtain the code separately and compare safety numbers.</div>
+
+            <div class="dual-action-row" style="margin-top: 8px;">
+              <button class="secondary-outline-btn" id="share-link-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="18" cy="5" r="3"></circle>
+                  <circle cx="6" cy="12" r="3"></circle>
+                  <circle cx="18" cy="19" r="3"></circle>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                </svg>
+                Share Link
+              </button>
+              <button class="secondary-outline-btn" id="save-qr-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Save QR
+              </button>
+            </div>
+
+            <p id="inv-expiry-text" style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 6px;">
+              Single-use invitation expires in <span id="inv-expiry-sec" style="color: #00E676; font-family: var(--font-mono); font-weight: 600;">300s</span>
+            </p>
+            <p id="boot-error-note" style="display: none; font-size: 11px; color: #FF5252; text-align: center; margin-top: 6px;"></p>
+
+            <div style="font-size: 10px; color: #7FA690; background: rgba(0, 230, 118, 0.05); border: 1px solid rgba(0, 230, 118, 0.15); border-radius: 8px; padding: 6px 10px; margin-top: 6px; text-align: left; line-height: 1.4;">
+              🔒 <strong>Security Notice:</strong> The QR code embeds an ephemeral X25519 public key and one-time 128-bit secret. Share links omit this secret for privacy. QR scan is recommended for authenticated key exchange.
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 5: SCAN QR CODE                                       -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-scan-qr">
+          <div class="screen-scrollable" style="justify-content: space-between; align-items: center; padding: 24px 20px;">
+            <div style="height: 4px;"></div>
+
+            <!-- Viewfinder Brackets & Live Camera Feed -->
+            <div class="qr-frame-box" id="scanner-viewfinder-box">
+              <div class="qr-corner-bracket tl" style="width: 32px; height: 32px; border-width: 4px 0 0 4px; z-index: 10;"></div>
+              <div class="qr-corner-bracket tr" style="width: 32px; height: 32px; border-width: 4px 4px 0 0; z-index: 10;"></div>
+              <div class="qr-corner-bracket bl" style="width: 32px; height: 32px; border-width: 0 0 4px 4px; z-index: 10;"></div>
+              <div class="qr-corner-bracket br" style="width: 32px; height: 32px; border-width: 0 4px 4px 0; z-index: 10;"></div>
+
+              <!-- Real Webcam / Phone Camera Video Feed -->
+              <video id="camera-video-stream" playsinline autoplay muted></video>
+              <canvas id="camera-canvas" style="display: none;"></canvas>
+
+              <!-- Scanning Laser Animation Line -->
+              <div id="scan-laser-line" style="position: absolute; left: 0; right: 0; height: 2px; background: #00E676; box-shadow: 0 0 8px #00E676; top: 10%; z-index: 8; display: none;"></div>
+
+            </div>
+
+            <p id="camera-status-text" style="font-size: 12px; color: var(--text-secondary); text-align: center; max-width: 260px;">
+              Point camera at a peer's GhostLink QR code.
+            </p>
+
+            <!-- Real Camera & File Controls -->
+            <div style="display: flex; gap: 8px; width: 100%; max-width: 260px;">
+              <button class="primary-green-btn" id="start-camera-btn" style="flex: 1; height: 40px; font-size: 11px; padding: 0 8px;">
+                Open Camera
+              </button>
+              <label class="secondary-outline-btn" style="flex: 1; height: 40px; font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer; margin: 0;">
+                <span id="scan-image-label">Scan Image</span>
+                <input type="file" id="qr-file-input" accept="image/*" capture="environment" style="display: none;">
+              </label>
+            </div>
+
+            <!-- Cancel Button -->
+            <button class="secondary-outline-btn" id="scan-qr-cancel-btn" style="height: 40px; width: 100%; max-width: 260px;">
+              ‹ Cancel
+            </button>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 6: ENTER INVITATION CODE                              -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-enter-code">
+          <div class="screen-top-header">
+            <button class="back-btn" id="enter-code-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Enter Invitation Code</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable">
+            <div class="code-entry-wrap">
+              <div class="code-icon-circle">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                  <line x1="6" y1="8" x2="6.01" y2="8"></line>
+                  <line x1="10" y1="8" x2="10.01" y2="8"></line>
+                  <line x1="14" y1="8" x2="14.01" y2="8"></line>
+                  <line x1="18" y1="8" x2="18.01" y2="8"></line>
+                  <line x1="6" y1="12" x2="6.01" y2="12"></line>
+                  <line x1="10" y1="12" x2="10.01" y2="12"></line>
+                  <line x1="14" y1="12" x2="14.01" y2="12"></line>
+                  <line x1="18" y1="12" x2="18.01" y2="12"></line>
+                </svg>
+              </div>
+
+              <p style="font-size: 14px; color: #FFF; max-width: 220px; line-height: 1.4;">
+                Type the code you received from the other person.
+              </p>
+
+              <input type="text" class="code-input-field" id="invitation-code-input" maxlength="32" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="e.g. 7K9M-4Q2X">
+
+              <button class="primary-green-btn" id="code-continue-btn">
+                Continue
+              </button>
+
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 24px; max-width: 220px;">
+                The code is valid for a limited time and can only be used once.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 7: INVITATION CONFIRMED                               -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-invitation-confirmed">
+          <div class="screen-top-header">
+            <button class="back-btn" id="conf-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Invitation Confirmed</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable" style="justify-content: space-between; padding-bottom: 24px;">
+            <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 20px;">
+              <div class="code-icon-circle">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  <polyline points="9 12 11 14 15 10"></polyline>
+                </svg>
+              </div>
+
+              <div style="font-size: 16px; font-weight: 700; color: var(--green-neon); margin-bottom: 4px;">
+                Valid invitation found!
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 28px;">
+                You're connecting with:
+              </div>
+
+              <!-- Peer Identity Card -->
+              <div class="ghost-card full-width" style="margin-bottom: 16px;">
+                <div class="alias-avatar-box">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                  </svg>
+                </div>
+                <div class="card-info" style="text-align: left;">
+                  <div class="card-main-title" id="conf-peer-alias">Mystic_2A9</div>
+                </div>
+                <svg width="20" height="16" viewBox="0 0 24 16" fill="var(--green-neon)">
+                  <rect x="1" y="10" width="3" height="6" rx="1"/>
+                  <rect x="7" y="6" width="3" height="10" rx="1"/>
+                  <rect x="13" y="2" width="3" height="14" rx="1"/>
+                  <rect x="19" y="0" width="3" height="16" rx="1"/>
+                </svg>
+              </div>
+
+              <div class="connection-spec-table">
+                <div class="spec-line"><span class="spec-k">Pairing code:</span><span class="spec-v" id="conf-pairing-code">7K9M-4Q2X</span></div>
+                <div class="spec-line"><span class="spec-k">Connection code:</span><span class="spec-v" id="conf-connection-code">3F7B-921Q</span></div>
+              </div>
+            </div>
+
+            <button class="primary-green-btn" id="conf-proceed-btn">
+              Proceed
+            </button>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 8: NEARBY DEVICES                                     -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-nearby-devices">
+          <div class="screen-top-header">
+            <button class="back-btn" id="nearby-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Nearby Devices</div>
+            <button class="header-action-btn" id="nearby-refresh-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="screen-scrollable">
+            <p style="color: var(--text-muted); font-size: 12px;">Active peers discovered on local network:</p>
+
+            <!-- Radar Graphic in Screenshot -->
+            <div class="radar-circle-display">
+              <div class="radar-circle-inner">
+                <div class="radar-center-dot"></div>
+              </div>
+            </div>
+
+            <!-- Dynamic Live Peer Container (Zero fake data) -->
+            <div id="nearby-devices-container" style="display: flex; flex-direction: column; gap: 8px; width: 100%;"></div>
+
+            <div id="nearby-empty-state" style="text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 8px; padding: 18px 12px; line-height: 1.5; background: rgba(0,230,118,0.03); border: 1px dashed var(--border-subtle); border-radius: 12px;">
+              <div style="color: var(--green-neon); font-weight: 600; margin-bottom: 4px;">📡 Local mDNS & WSS Discovery Active</div>
+              Scanning local Wi-Fi subnet...<br>
+              <span style="font-size: 11px; color: #7FA690;">Open GhostLink on your second device to connect live.</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 9: CONNECTION REQUEST                                 -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-connection-request">
+          <div class="screen-top-header">
+            <button class="back-btn" id="connreq-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Connection Request</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable" style="justify-content: space-between; padding-bottom: 24px;">
+            <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 24px;">
+              <div class="code-icon-circle">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                </svg>
+              </div>
+
+              <div style="font-size: 18px; font-weight: 700; color: #FFF; margin-bottom: 2px;">
+                Lunar_8D4
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 28px;">
+                wants to connect with you.
+              </div>
+
+              <div class="connection-spec-table" style="text-align: left;">
+                <div style="font-size: 11px; color: var(--text-muted);">Temporary Alias</div>
+                <div style="font-size: 14px; font-weight: 600; color: #FFF; margin-bottom: 8px;">Lunar_8D4</div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-muted);">Signal Strength</div>
+                    <div style="font-size: 13px; color: var(--green-neon);">Excellent</div>
+                  </div>
+                  <svg width="20" height="16" viewBox="0 0 24 16" fill="var(--green-neon)">
+                    <rect x="1" y="10" width="3" height="6" rx="1"/><rect x="7" y="6" width="3" height="10" rx="1"/><rect x="13" y="2" width="3" height="14" rx="1"/><rect x="19" y="0" width="3" height="16" rx="1"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div class="dual-action-row">
+              <button class="secondary-outline-btn" id="connreq-reject-btn">
+                ✕ Reject
+              </button>
+              <button class="primary-green-btn" id="connreq-accept-btn">
+                ✓ Accept
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 10: CONNECTED!                                        -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-connected">
+          <div class="screen-scrollable" style="justify-content: space-between; align-items: center; padding: 40px 20px 24px 20px; text-align: center;">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+              <!-- Green Glowing Ghost Silhouette -->
+              <svg class="connected-ghost-hero" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C7.58 2 4 5.58 4 10v9.5c0 .28.22.5.5.5.15 0 .28-.06.38-.16L7 17.71l2.12 2.13c.2.2.51.2.71 0L12 17.71l2.17 2.13c.2.2.51.2.71 0L17 17.71l2.12 2.13c.1.1.23.16.38.16.28 0 .5-.22.5-.5V10c0-4.42-3.58-8-8-8zm-2.5 9c-.83 0-1.5-.67-1.5-1.5S8.67 8 9.5 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm5 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+              </svg>
+
+              <div style="font-size: 20px; font-weight: 700; color: #FFF; margin-bottom: 4px;">Connected!</div>
+              <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 24px;">
+                You are now securely connected with Lunar_8D4.
+              </p>
+
+              <!-- Exact Spec Card in Screenshot -->
+              <div class="connection-spec-table" style="text-align: left;">
+                <div class="spec-line"><span class="spec-k">Temporary Alias</span><span class="spec-v green">: Lunar_8D4</span></div>
+                <div class="spec-line"><span class="spec-k">Signal Strength</span><span class="spec-v green">: Excellent</span></div>
+                <div class="spec-line"><span class="spec-k">Connection Type</span><span class="spec-v">: Wi-Fi Direct</span></div>
+              </div>
+            </div>
+
+            <button class="primary-green-btn" id="start-chat-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+              Start Chat
+            </button>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 11: CHAT (TERMINAL STYLE - GREEN)                     -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-chat-green">
+          <div class="chat-app-header">
+            <button class="back-btn" id="chat-green-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="chat-peer-info">
+              <div class="alias-avatar-box" style="width: 28px; height: 28px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+              </div>
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: #FFF;">Lunar_8D4</div>
+                <div style="font-size: 10px; color: var(--green-neon);">Online</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <button class="header-action-btn" id="chat-timer-btn-green" title="Disappearing messages timer" style="font-size: 11px; padding: 4px 6px; width: auto; color: var(--green-neon); font-family: var(--font-mono);">
+                ⏱ <span id="timer-label-green">Off</span>
+              </button>
+              <button class="header-action-btn" id="chat-safety-btn-green" title="Verify Safety Number">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+              </button>
+              <button class="header-action-btn" id="chat-to-exit-btn" title="Exit / Disconnect">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="chat-bubble-stream" id="chat-stream-green">
+            <!-- No placeholder bubbles: only real sent and received messages are rendered. -->
+          </div>
+
+          <div class="chat-bottom-composer">
+            <div class="chat-composer-box">
+              <button style="background: none; border: none; color: var(--text-muted); cursor: pointer;">+</button>
+              <input type="text" class="chat-input-text" id="chat-input-green" placeholder="Type a message...">
+            </div>
+            <button class="chat-send-circle" id="chat-send-green">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 12: CHAT (BLUE OPTIONAL THEME)                        -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-chat-blue">
+          <div class="chat-app-header" style="border-bottom-color: #0E273C;">
+            <button class="back-btn" id="chat-blue-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="chat-peer-info">
+              <div class="alias-avatar-box" style="width: 28px; height: 28px; border-color: #00B0FF; background: #0A2033; color: #00B0FF;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+              </div>
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: #FFF;">Lunar_8D4</div>
+                <div style="font-size: 10px; color: #00B0FF;">Online</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <button class="header-action-btn" id="chat-timer-btn-blue" title="Disappearing messages timer" style="font-size: 11px; padding: 4px 6px; width: auto; color: #00B0FF; font-family: var(--font-mono);">
+                ⏱ <span id="timer-label-blue">Off</span>
+              </button>
+              <button class="header-action-btn" id="chat-safety-btn-blue" title="Verify Safety Number">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00B0FF" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+              </button>
+              <button class="header-action-btn" id="chat-to-exit-blue-btn" title="Exit / Disconnect">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00B0FF" stroke-width="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="chat-bubble-stream" id="chat-stream-blue">
+            <!-- No placeholder bubbles: only real sent and received messages are rendered. -->
+          </div>
+
+          <div class="chat-bottom-composer" style="border-top-color: #0E273C;">
+            <div class="chat-composer-box" style="background: #091724; border-color: #15334D;">
+              <button style="background: none; border: none; color: var(--text-muted); cursor: pointer;">+</button>
+              <input type="text" class="chat-input-text" id="chat-input-blue" placeholder="Type a message...">
+            </div>
+            <button class="chat-send-circle" id="chat-send-blue" style="background: #00B0FF;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5">
+                <line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 13: SETTINGS                                          -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-settings">
+          <div class="screen-top-header">
+            <button class="back-btn" id="settings-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Settings</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable">
+            <!-- 1. Your Alias in Settings -->
+            <div class="ghost-card" id="settings-alias-card" style="cursor: pointer;">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+              </div>
+              <div class="card-info">
+                <div class="alias-label-sm">Your Alias</div>
+                <div class="card-main-title" id="settings-alias-display">Shadow7F3</div>
+                <div class="card-subtitle">Tap to generate new alias</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <!-- 2. Connection Preferences -->
+            <div class="ghost-card" id="settings-conn-card" style="cursor: pointer;">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle><path d="M8 12h8"></path><path d="M12 8v8"></path>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Connection Preferences</div>
+                <div class="card-subtitle">Wi-Fi Direct, discovery settings</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <!-- 3. Privacy & Security -->
+            <div class="ghost-card" id="settings-privacy-card" style="cursor: pointer;">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">Privacy & Security</div>
+                <div class="card-subtitle">Theme switch, screen security</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <!-- 4. About GhostLink -->
+            <div class="ghost-card" id="settings-about-card" style="cursor: pointer;">
+              <div class="card-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title">About GhostLink</div>
+                <div class="card-subtitle">Version 1.0.0 (Stage 1)</div>
+              </div>
+              <span class="card-right-arrow">›</span>
+            </div>
+
+            <!-- 5. Panic Button -->
+            <div class="ghost-card" id="settings-panic-card" style="cursor: pointer; border-color: rgba(255, 82, 82, 0.4); background: rgba(255, 23, 68, 0.08);">
+              <div class="card-icon-box" style="border-color: #FF5252; color: #FF5252;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <div class="card-info">
+                <div class="card-main-title" style="color: #FF5252;">Panic Clear</div>
+                <div class="card-subtitle" style="color: #FF8A80;">Emergency wipe: purge all volatile chat data</div>
+              </div>
+              <span class="card-right-arrow" style="color: #FF5252;">›</span>
+            </div>
+
+            <!-- Settings interactive popups -->
+            <div id="settings-modal" style="display: none; margin-top: 10px; padding: 14px; background: #0E1A14; border: 1px solid #1E5A3C; border-radius: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span id="settings-modal-title" style="font-weight: 600; color: #E8F5EC; font-size: 14px;"></span>
+                <button id="settings-modal-close" style="background: none; border: none; color: #7FA690; font-size: 16px; cursor: pointer;">✕</button>
+              </div>
+              <div id="settings-modal-body" style="font-size: 12px; color: #7FA690; line-height: 1.5;"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN: SAFETY NUMBER / FINGERPRINT VERIFICATION             -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-safety-number">
+          <div class="screen-top-header">
+            <button class="back-btn" id="safety-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Safety Number</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable" style="justify-content: space-between; padding-bottom: 24px; text-align: center;">
+            <div>
+              <div class="code-icon-circle" style="margin: 20px auto 12px auto;">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green-neon)" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+              </div>
+
+              <div style="font-size: 16px; font-weight: 700; color: #FFF; margin-bottom: 4px;">
+                End-to-End Cryptographic Verification
+              </div>
+              <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.4; padding: 0 16px;">
+                Compare this safety number with your peer to verify that no man-in-the-middle is intercepting your session.
+              </p>
+
+              <!-- Safety Number Digits Box -->
+              <div class="ghost-card full-width" style="background: #061109; border: 1px solid var(--green-neon); padding: 18px; margin-bottom: 16px;">
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">
+                  Session Fingerprint (SHA-256 / X25519)
+                </div>
+                <div id="safety-number-display" style="font-family: var(--font-mono); font-size: 22px; font-weight: 700; letter-spacing: 0.12em; color: var(--green-neon);">
+                  ---- - ---- - ----
+                </div>
+              </div>
+
+              <div style="font-size: 11px; color: #7FA690; background: rgba(0, 230, 118, 0.04); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 12px; text-align: left; line-height: 1.4;">
+                🔒 <strong>Cryptographic Guarantee:</strong> Derived canonically from both ephemeral X25519 public keys and the 128-bit single-use token. If both numbers match, your conversation is mathematically private.
+              </div>
+            </div>
+
+            <button class="primary-green-btn" id="safety-verify-btn">
+              ✓ Mark as Verified
+            </button>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN: SETTINGS - CONNECTION PREFERENCES                    -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-settings-connection">
+          <div class="screen-top-header">
+            <button class="back-btn" id="settings-conn-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Connection Preferences</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable">
+            <div class="connection-spec-table" style="text-align: left; margin-bottom: 16px;">
+              <div class="spec-line"><span class="spec-k">Active Transport</span><span class="spec-v green">WSS + HTTPS Relay</span></div>
+              <div class="spec-line"><span class="spec-k">LAN Discovery</span><span class="spec-v green">mDNS (bonjour-service)</span></div>
+              <div class="spec-line"><span class="spec-k">Encryption</span><span class="spec-v">XChaCha20-Poly1305</span></div>
+              <div class="spec-line"><span class="spec-k">Local Subnet</span><span class="spec-v" id="conn-lan-ip-display">Active</span></div>
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; padding: 12px; background: #07130B; border: 1px solid var(--border-subtle); border-radius: 10px;">
+              <strong>Pluggable Transport Architecture:</strong><br>
+              The messaging layer is decoupled from networking. Transport runs on encrypted local WebSockets. Bluetooth Low Energy and Wi-Fi Direct modules can be plugged in without changing cryptographic keys.
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN: SETTINGS - PRIVACY & SECURITY                        -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-settings-privacy">
+          <div class="screen-top-header">
+            <button class="back-btn" id="settings-priv-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Privacy & Security</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable">
+            <!-- Theme Selection -->
+            <div style="margin-bottom: 20px;">
+              <div style="font-size: 13px; font-weight: 600; color: #FFF; margin-bottom: 8px;">Interface Theme:</div>
+              <div style="display: flex; gap: 8px;">
+                <button id="theme-btn-green" class="toolbar-btn" style="flex: 1; height: 42px; background: #0F2618; border: 1px solid #00E676; color: #00E676; font-weight: 600;">Ghost Green</button>
+                <button id="theme-btn-blue" class="toolbar-btn" style="flex: 1; height: 42px; background: #08182B; border: 1px solid #00B0FF; color: #00B0FF; font-weight: 600;">Midnight Blue</button>
+              </div>
+            </div>
+
+            <!-- Disappearing Messages Default -->
+            <div style="margin-bottom: 20px;">
+              <div style="font-size: 13px; font-weight: 600; color: #FFF; margin-bottom: 8px;">Disappearing Message Timer:</div>
+              <select id="default-disappearing-select" style="width: 100%; height: 40px; background: #07130B; border: 1px solid var(--border-subtle); color: #FFF; border-radius: 8px; padding: 0 10px; font-family: var(--font-mono);">
+                <option value="0">Off (Until Session Disconnect)</option>
+                <option value="30">30 Seconds</option>
+                <option value="300" selected>5 Minutes</option>
+                <option value="3600">1 Hour</option>
+              </select>
+              <div style="font-size: 11px; color: #7FA690; margin-top: 6px;">Requested of the peer; disappearance is not guaranteed.</div>
+            </div>
+
+            <!-- Storage disclosure -->
+            <div id="ram-only-note" style="display: none; font-size: 11px; color: #7FA690; line-height: 1.5; padding: 12px; background: rgba(0, 230, 118, 0.04); border: 1px solid var(--border-subtle); border-radius: 10px;">
+              🔒 <strong>RAM-Only Storage:</strong> Chat messages and X25519 keys are held exclusively in volatile browser memory. Nothing is written to IndexedDB, LocalStorage, or cookies. When the session ends, keys are scrubbed via libsodium <code>memzero</code>.
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN: SETTINGS - ABOUT GHOSTLINK                           -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-settings-about">
+          <div class="screen-top-header">
+            <button class="back-btn" id="settings-about-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">About GhostLink</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable">
+            <div class="connection-spec-table" style="text-align: left; margin-bottom: 16px;">
+              <div class="spec-line"><span class="spec-k">Version</span><span class="spec-v">1.0.0 (Production Engine)</span></div>
+              <div class="spec-line"><span class="spec-k">Crypto Engine</span><span class="spec-v green">libsodium-wrappers v0.7.15</span></div>
+              <div class="spec-line"><span class="spec-k">Key Exchange</span><span class="spec-v">X25519 (ECDH)</span></div>
+              <div class="spec-line"><span class="spec-k">Cipher</span><span class="spec-v">XChaCha20-Poly1305 AEAD</span></div>
+              <div class="spec-line"><span class="spec-k">Message Block</span><span class="spec-v">512-Byte Fixed Padding</span></div>
+              <div class="spec-line"><span class="spec-k">QR Standard</span><span class="spec-v">ISO/IEC 18004 (Level M)</span></div>
+              <div class="spec-line"><span class="spec-k">Disk Storage</span><span class="spec-v green">Zero (RAM Only)</span></div>
+            </div>
+
+            <p style="font-size: 11px; color: var(--text-muted); line-height: 1.5; padding: 0 4px;">
+              GhostLink is an anonymous, ephemeral peer-to-peer communication platform built for uncompromising personal privacy.
+            </p>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 14: PERMISSION REQUEST                                -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-permission">
+          <div class="screen-top-header">
+            <button class="back-btn" id="perm-back-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="screen-heading">Permission Request</div>
+            <div style="width: 20px;"></div>
+          </div>
+
+          <div class="screen-scrollable" style="justify-content: center;">
+            <div class="permission-dialog-box">
+              <div class="permission-icon-circle">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                  <circle cx="12" cy="10" r="3"></circle>
+                </svg>
+              </div>
+
+              <div style="font-size: 15px; font-weight: 700; color: #FFF; line-height: 1.3;">
+                Allow GhostLink to access your location?
+              </div>
+
+              <p style="font-size: 12px; color: var(--text-muted); line-height: 1.4;">
+                Location permission is required for Wi-Fi Direct device discovery and connection.
+              </p>
+
+              <div class="permission-btn-group">
+                <button class="perm-btn primary" id="perm-allow-btn">
+                  Allow while using the app
+                </button>
+                <button class="perm-btn" id="perm-once-btn">
+                  Only this time
+                </button>
+                <button class="perm-btn" id="perm-deny-btn">
+                  Don't allow
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- SCREEN 15: EXIT / DISCONNECT                                 -->
+        <!-- ============================================================ -->
+        <section class="screen" id="screen-exit">
+          <div class="exit-screen-wrap">
+            <svg class="exit-ghost-icon" viewBox="0 0 108 108" fill="none" stroke="currentColor" stroke-width="3">
+              <path d="M 24 85 L 24 45 C 24 22, 84 22, 84 45 L 84 85 C 76 89, 72 82, 64 85 C 56 89, 52 82, 44 85 C 36 89, 32 82, 24 85 Z"/>
+              <circle cx="42" cy="46" r="3.5" fill="currentColor"/>
+              <circle cx="66" cy="46" r="3.5" fill="currentColor"/>
+            </svg>
+
+            <div style="font-size: 20px; font-weight: 700; color: #FFF; margin-bottom: 2px;">GhostLink</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 30px;">Small steps.<br>Big privacy.</div>
+
+            <div class="connection-spec-table" style="margin-bottom: 24px; text-align: left;">
+              <div class="spec-line"><span class="spec-k">Location</span><span class="spec-v green">Enabled ›</span></div>
+              <div class="spec-line"><span class="spec-k">Wi-Fi Direct</span><span class="spec-v green">Connected ›</span></div>
+              <div class="spec-line"><span class="spec-k">Battery</span><span class="spec-v green">Optimized ›</span></div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+              <button class="secondary-outline-btn text-danger" id="exit-disconnect-btn" style="border-color: rgba(255, 82, 82, 0.4);">
+                Disconnect
+              </button>
+              <button class="ghost-btn-text" id="exit-home-btn" style="color: var(--green-neon);">
+                ⌂ Back to Home
+              </button>
+            </div>
+          </div>
+        </section>
+
+      </div> <!-- /app-screen-container -->
+    </div> <!-- /device-frame -->
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Background -->
+    <path
+        android:fillColor="#050806"
+        android:pathData="M0,0h108v108H0z" />
+
+    <!-- Ghost body outline -->
+    <path
+        android:strokeColor="#286B45"
+        android:strokeWidth="2.5"
+        android:fillColor="@android:color/transparent"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="
+        M27,80 L27,46
+        C27,28 81,28 81,46
+        L81,80
+        C74,90 68,72 62,80
+        C56,90 51,72 45,80
+        C39,90 34,72 27,80 Z" />
+
+    <!-- Left eye -->
+    <path
+        android:strokeColor="#286B45"
+        android:strokeWidth="2"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M42,52 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+
+    <!-- Right eye -->
+    <path
+        android:strokeColor="#286B45"
+        android:strokeWidth="2"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M66,52 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+
+</vector>

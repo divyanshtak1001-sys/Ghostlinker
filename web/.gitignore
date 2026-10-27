@@ -1,0 +1,4 @@
+# Development TLS material: generate locally with mkcert; never commit a key.
+cert.pem
+key.pem
+rootCA.pem
